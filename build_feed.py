@@ -17,6 +17,7 @@ import json
 import os
 import re
 import sys
+from collections import Counter
 from dataclasses import dataclass
 from datetime import date, datetime, time
 from zoneinfo import ZoneInfo
@@ -27,7 +28,6 @@ SOURCE_URL = "https://nu-universityrecreationcalendars.netlify.app/cabot-pool-op
 # SOURCE_URL is a JS shell: it renders nothing server-side and fetches this
 # Netlify function, which proxies 25Live. Parse the JSON, not the markup.
 API_URL = "https://nu-universityrecreationcalendars.netlify.app/.netlify/functions/cabotpool"
-WINDOW_DAYS = 30
 OUTPUT_PATH = os.path.join(os.path.dirname(__file__), "docs", "cabot-swim.ics")
 # Written only when a session is cancelled or moved. Its presence is the
 # signal the workflow uses to open an issue, which is what mails you.
@@ -76,7 +76,7 @@ def fetch(url: str = API_URL) -> str:
     # would swing week to week and trip guard_or_die's shrink check for nothing.
     resp = requests.get(
         url,
-        params={"startdate": date.today().strftime("%Y%m%d"), "days": WINDOW_DAYS},
+        params={"startdate": date.today().strftime("%Y%m%d"), "days": 30},
         timeout=30,
         headers={"User-Agent": "cabot-swim-ics/1.0"},
     )
@@ -146,10 +146,9 @@ def parse_sessions(payload: str) -> list[Session]:
 
     # Duplicate UIDs make a malformed feed that calendar clients resolve however
     # they feel like. Cheaper to fail here than to debug it in Apple Calendar.
-    uids = [s.uid() for s in sessions]
-    if len(set(uids)) != len(uids):
-        dupes = sorted({str(s) for s in sessions if uids.count(s.uid()) > 1})
-        raise ValueError(f"duplicate sessions in source: {dupes}")
+    dupes = [s for s, n in Counter(sessions).items() if n > 1]
+    if dupes:
+        raise ValueError(f"duplicate sessions in source: {sorted(map(str, dupes))}")
 
     return sessions
 
@@ -292,23 +291,13 @@ def describe_changes(previous: str, sessions: list[Session]) -> str:
     if not gone and not added:
         return ""
 
-    def bullet(s: Session) -> str:
-        return f"- {s.day:%a %Y-%m-%d} {s.start:%H:%M}-{s.end:%H:%M} {s.title}"
-
     out = []
-    if gone:
-        out += ["**Gone from the schedule** (cancelled, or moved to the times below):", ""]
-        out += [bullet(s) for s in gone] + [""]
-    if added:
-        out += ["**New or moved to:**", ""]
-        out += [bullet(s) for s in added] + [""]
-    out += [
-        f"Compared {lo} to {hi}, the range both the old and new feed cover.",
-        "",
-        "A session on one list only is a straight cancellation or addition. The same",
-        "date on both lists is a time change. Northeastern is the source of truth:",
-        f"<{SOURCE_URL}>",
-    ]
+    for label, group in (("Gone from the schedule", gone), ("New or moved to", added)):
+        if group:
+            out += [f"**{label}:**", ""]
+            out += [f"- {s.day:%a %Y-%m-%d} {s.start:%H:%M}-{s.end:%H:%M} {s.title}" for s in group]
+            out += [""]
+    out += [f"Compared {lo} to {hi}, the range both feeds cover. Source: <{SOURCE_URL}>"]
     return "\n".join(out)
 
 
