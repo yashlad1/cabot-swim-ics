@@ -81,7 +81,8 @@ Feed lands at `https://<you>.github.io/cabot-swim-ics/cabot-swim.ics`.
 
 **macOS** — Calendar → File → New Calendar Subscription → paste the URL.
 Set **Location: iCloud**, not *On My Mac*, or it won't reach your phone.
-Auto-refresh: the shortest option offered.
+Auto-refresh: **Every hour**. The feed itself only rebuilds every 3 hours,
+so hourly bounds your worst-case lag at ~4h without hammering GitHub Pages.
 
 **iPhone** — Settings → Apps → Calendar → Calendar Accounts → Add Account →
 Other → Add Subscribed Calendar. (Older iOS: Settings → Calendar → Accounts →
