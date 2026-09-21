@@ -3,3 +3,4 @@ __pycache__/
 .pytest_cache/
 fixtures/*.raw
 cabot-swim-ics.zip
+changes.md

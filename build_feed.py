@@ -29,6 +29,9 @@ SOURCE_URL = "https://nu-universityrecreationcalendars.netlify.app/cabot-pool-op
 API_URL = "https://nu-universityrecreationcalendars.netlify.app/.netlify/functions/cabotpool"
 WINDOW_DAYS = 30
 OUTPUT_PATH = os.path.join(os.path.dirname(__file__), "docs", "cabot-swim.ics")
+# Written only when a session is cancelled or moved. Its presence is the
+# signal the workflow uses to open an issue, which is what mails you.
+CHANGES_PATH = os.path.join(os.path.dirname(__file__), "changes.md")
 
 CALENDAR_NAME = "Cabot Open Swim"
 LOCATION = "Barletta Natatorium, Cabot Physical Education Center, 400 Huntington Ave, Boston, MA 02115"
@@ -245,6 +248,70 @@ def build_ics(sessions: list[Session]) -> str:
     return "\r\n".join(fold(ln) for ln in lines) + "\r\n"
 
 
+# Inverse of build_ics, enough of it to diff two feeds. Field order is the one
+# build_ics writes; unfolding first because LOCATION wraps past 75 octets.
+_EVENT_RE = re.compile(
+    r"BEGIN:VEVENT.*?"
+    r"DTSTART;TZID=[^:]+:(\d{8}T\d{6}).*?"
+    r"DTEND;TZID=[^:]+:(\d{8}T\d{6}).*?"
+    r"SUMMARY:(.*?)\r\n.*?END:VEVENT",
+    re.DOTALL,
+)
+
+
+def read_ics(text: str) -> list[Session]:
+    out = []
+    for start, end, title in _EVENT_RE.findall(text.replace("\r\n ", "")):
+        s = datetime.strptime(start, "%Y%m%dT%H%M%S")
+        e = datetime.strptime(end, "%Y%m%dT%H%M%S")
+        title = re.sub(r"\\([\\;,n])", lambda m: "\n" if m.group(1) == "n" else m.group(1), title)
+        out.append(Session(s.date(), s.time(), e.time(), title))
+    return out
+
+
+def describe_changes(previous: str, sessions: list[Session]) -> str:
+    """Sessions cancelled or moved since the last build. "" if none.
+
+    Only compares dates *both* feeds cover. The window rolls forward daily, so
+    without that clamp every single run would report the day falling off the
+    front as a cancellation and the day appearing at the back as an addition,
+    and the alert would be noise inside a week.
+    """
+    old = read_ics(previous)
+    if not old or not sessions:
+        return ""
+
+    lo = max(min(s.day for s in old), min(s.day for s in sessions))
+    hi = min(max(s.day for s in old), max(s.day for s in sessions))
+    if lo > hi:
+        return ""  # feeds don't overlap at all; nothing to compare
+
+    was = {s for s in old if lo <= s.day <= hi}
+    now = {s for s in sessions if lo <= s.day <= hi}
+    gone, added = sorted(was - now), sorted(now - was)
+    if not gone and not added:
+        return ""
+
+    def bullet(s: Session) -> str:
+        return f"- {s.day:%a %Y-%m-%d} {s.start:%H:%M}-{s.end:%H:%M} {s.title}"
+
+    out = []
+    if gone:
+        out += ["**Gone from the schedule** (cancelled, or moved to the times below):", ""]
+        out += [bullet(s) for s in gone] + [""]
+    if added:
+        out += ["**New or moved to:**", ""]
+        out += [bullet(s) for s in added] + [""]
+    out += [
+        f"Compared {lo} to {hi}, the range both the old and new feed cover.",
+        "",
+        "A session on one list only is a straight cancellation or addition. The same",
+        "date on both lists is a time change. Northeastern is the source of truth:",
+        f"<{SOURCE_URL}>",
+    ]
+    return "\n".join(out)
+
+
 def count_events(ics: str) -> int:
     return len(re.findall(r"^BEGIN:VEVENT", ics, flags=re.MULTILINE))
 
@@ -288,6 +355,14 @@ def main() -> int:
     with open(OUTPUT_PATH, "w", encoding="utf-8", newline="") as fh:
         fh.write(ics)
     print(f"Wrote {len(sessions)} sessions to {OUTPUT_PATH}")
+
+    # A changed file is not news by itself -- the window rolls every day. Only a
+    # cancellation or a moved time is worth mailing about.
+    report = describe_changes(previous, sessions) if previous else ""
+    if report:
+        print("\n" + report)
+        with open(CHANGES_PATH, "w", encoding="utf-8") as fh:
+            fh.write(report)
     return 0
 
 

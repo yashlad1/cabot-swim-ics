@@ -16,6 +16,7 @@ on:
 
 permissions:
   contents: write
+  issues: write   # the cancellation alert is filed as an issue
 
 concurrency:
   group: rebuild-feed
@@ -53,3 +54,18 @@ jobs:
           git add docs/
           git commit -m "chore: refresh swim feed ($(date -u +%Y-%m-%d))"
           git push
+
+      # build_feed.py writes changes.md only when a session was cancelled or
+      # moved -- not when the 30-day window merely rolled forward. Filing it as
+      # an issue is what actually reaches you: GitHub does not email on pushes,
+      # and assigning it guarantees the notification regardless of watch setting.
+      # Last step on purpose: if this fails, the refreshed feed is already published.
+      - name: Alert on cancelled or moved sessions
+        if: hashFiles('changes.md') != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create \
+            --title "Open swim: schedule changed $(date -u +%Y-%m-%d)" \
+            --body-file changes.md \
+            --assignee "${{ github.repository_owner }}"

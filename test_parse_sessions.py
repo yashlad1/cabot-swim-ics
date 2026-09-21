@@ -10,11 +10,18 @@ Run: python3 -m pytest test_parse_sessions.py -q
 
 import json
 import os
-from datetime import date, time
+from datetime import date, time, timedelta
 
 import pytest
 
-from build_feed import Session, build_ics, count_events, parse_sessions
+from build_feed import (
+    Session,
+    build_ics,
+    count_events,
+    describe_changes,
+    parse_sessions,
+    read_ics,
+)
 
 FIXTURE = os.path.join(os.path.dirname(__file__), "fixtures", "cabotpool-20260921.json")
 
@@ -128,3 +135,69 @@ def test_end_to_end_fixture_to_ics():
     assert count_events(ics) == 44
     assert "RRULE" not in ics.split("END:VTIMEZONE")[1]  # VTIMEZONE's own rules only
     assert "DTSTART;TZID=America/New_York:20260921T114500" in ics
+
+
+# --- change detection: what gets you an email, and what must not ---
+
+def feed(sessions):
+    return build_ics(sessions)
+
+
+def test_read_ics_round_trips_build_ics():
+    original = parse_sessions(raw())
+    assert sorted(read_ics(feed(original))) == sorted(original)
+
+
+def test_read_ics_unescapes_title():
+    tricky = [Session(date(2026, 10, 1), time(12, 0), time(13, 0), "Open Swim; lanes 1,2")]
+    assert read_ics(feed(tricky)) == tricky
+
+
+def test_identical_feeds_report_nothing():
+    original = parse_sessions(raw())
+    assert describe_changes(feed(original), original) == ""
+
+
+def test_rolling_window_reports_nothing():
+    # The one that decides whether this alert is useful or ignored noise: the
+    # window slides forward every day, so the oldest day leaves and a new one
+    # arrives on its own. Neither is a schedule change.
+    original = parse_sessions(raw())
+    oldest, newest = min(s.day for s in original), max(s.day for s in original)
+    rolled = [s for s in original if s.day != oldest]
+    rolled += [Session(newest + timedelta(days=1), s.start, s.end, s.title)
+               for s in original if s.day == oldest]
+    assert describe_changes(feed(original), rolled) == ""
+
+
+def test_cancelled_session_is_reported():
+    original = parse_sessions(raw())
+    victim = sorted(original)[10]
+    report = describe_changes(feed(original), [s for s in original if s != victim])
+    assert "Gone from the schedule" in report
+    assert f"{victim.day:%a %Y-%m-%d} {victim.start:%H:%M}" in report
+    assert "New or moved to" not in report
+
+
+def test_moved_session_appears_on_both_lists():
+    original = parse_sessions(raw())
+    victim = sorted(original)[10]
+    moved = Session(victim.day, time(20, 0), time(21, 0), victim.title)
+    report = describe_changes(feed(original), [s for s in original if s != victim] + [moved])
+    assert "Gone from the schedule" in report and "New or moved to" in report
+    assert "20:00-21:00" in report
+
+
+def test_non_overlapping_feeds_report_nothing():
+    # Cron disabled for a month: the two windows share no dates, so every
+    # session would look cancelled. Better to say nothing than 44 false alarms.
+    original = parse_sessions(raw())
+    future = [Session(s.day + timedelta(days=365), s.start, s.end, s.title) for s in original]
+    assert describe_changes(feed(original), future) == ""
+
+
+def test_empty_side_reports_nothing():
+    # A total collapse is guard_or_die's job (it exits and GitHub mails the
+    # failure); this must not also try to diff it.
+    assert describe_changes(feed(parse_sessions(raw())), []) == ""
+    assert describe_changes("", parse_sessions(raw())) == ""

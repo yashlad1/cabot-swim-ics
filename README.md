@@ -16,8 +16,9 @@ Source: <https://nu-universityrecreationcalendars.netlify.app/cabot-pool-open-sw
 |---|---|
 | ICS writer (`build_ics`) | done, 11 tests passing |
 | Fail-closed guards | done |
+| Cancellation alerts | done, emailed as an assigned issue |
 | Actions workflow | done |
-| `parse_sessions()` | done, 15 tests against a saved fixture |
+| `parse_sessions()` | done, 23 tests against a saved fixture |
 
 ## What the source actually is
 
@@ -63,7 +64,7 @@ the feed empties, which is exactly the failure that gets you to a locked pool.
 
 ```bash
 pip install -r requirements.txt
-python -m pytest -q          # 26 pass, all offline
+python -m pytest -q          # 34 pass, all offline
 python build_feed.py         # writes docs/cabot-swim.ics
 ```
 
@@ -106,6 +107,22 @@ skips the commit. Otherwise you'd accumulate one empty commit per day forever.
 than 5 sessions, or under half the previous count. A silent empty publish is
 the worst outcome: your calendar quietly empties and you show up to a locked
 pool. On failure the old feed keeps serving and GitHub emails you.
+
+**Change alerts compare the overlap, not the file.** A changed feed is not
+news: the window rolls forward every day, so the oldest day leaves and a new
+one arrives on its own. `describe_changes()` clamps the comparison to the dates
+*both* the old and new feed cover, and reports only what was cancelled or
+moved inside it. Without that clamp the alert fires daily and you learn to
+ignore it, which is worse than having no alert. If the two windows don't
+overlap at all — the cron was off for a month — it stays quiet rather than
+claiming 44 cancellations.
+
+When there is something to say, `build_feed.py` writes `changes.md` and the
+workflow files it as an issue **assigned to you**. Assignment is the part that
+matters: GitHub does not email on pushes, and assignment notifies regardless
+of your watch setting. A total collapse to zero sessions is not this path —
+`guard_or_die()` exits, the feed keeps serving yesterday's file, and GitHub
+emails you the failed run.
 
 **`TRANSP:TRANSPARENT`.** Events don't mark you busy, so they don't block
 meeting invites.
