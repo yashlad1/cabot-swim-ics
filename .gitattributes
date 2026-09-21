@@ -1,0 +1,4 @@
+# RFC 5545 requires CRLF. Without this git normalises the feed to LF on commit,
+# which (a) ships line endings some calendar clients reject and (b) makes the
+# workflow's `git diff --quiet -- docs/` fire on every run, committing 8x a day.
+*.ics -text

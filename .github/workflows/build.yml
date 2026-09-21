@@ -1,0 +1,55 @@
+name: Rebuild swim feed
+
+on:
+  schedule:
+    # Every 3 hours (00:23, 03:23, ... 21:23 UTC), so a schedule change posted
+    # mid-day reaches subscribers the same day instead of the next morning.
+    # Off-the-hour on purpose: GitHub queues everything scheduled at :00, so odd
+    # minutes run nearer on time. Runs that find no change skip the commit
+    # below, so 8 runs a day still produce at most one commit per real change.
+    - cron: "23 */3 * * *"
+  workflow_dispatch:
+  push:
+    paths:
+      - "build_feed.py"
+      - ".github/workflows/build.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rebuild-feed
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Test
+        run: python -m pytest -q
+
+      # Exits non-zero if the parse looks wrong, which leaves docs/ untouched
+      # and fails the run. GitHub emails you on a failed scheduled workflow.
+      - name: Rebuild feed
+        run: python build_feed.py
+
+      - name: Commit if changed
+        run: |
+          if git diff --quiet -- docs/; then
+            echo "No change; skipping commit."
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/
+          git commit -m "chore: refresh swim feed ($(date -u +%Y-%m-%d))"
+          git push
