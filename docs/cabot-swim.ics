@@ -453,4 +453,34 @@ LOCATION:Barletta Natatorium\, Cabot Physical Education Center\, 400 Huntin
  gton Ave\, Boston\, MA 02115
 TRANSP:TRANSPARENT
 END:VEVENT
+BEGIN:VEVENT
+UID:2e589bd56bebbc4cabc1@cabot-swim
+DTSTAMP:20261122T000000Z
+DTSTART;TZID=America/New_York:20261122T100000
+DTEND;TZID=America/New_York:20261122T120000
+SUMMARY:Open Swim
+LOCATION:Barletta Natatorium\, Cabot Physical Education Center\, 400 Huntin
+ gton Ave\, Boston\, MA 02115
+TRANSP:TRANSPARENT
+END:VEVENT
+BEGIN:VEVENT
+UID:5681f06f57ae42417b94@cabot-swim
+DTSTAMP:20261123T000000Z
+DTSTART;TZID=America/New_York:20261123T174500
+DTEND;TZID=America/New_York:20261123T193000
+SUMMARY:Open Swim
+LOCATION:Barletta Natatorium\, Cabot Physical Education Center\, 400 Huntin
+ gton Ave\, Boston\, MA 02115
+TRANSP:TRANSPARENT
+END:VEVENT
+BEGIN:VEVENT
+UID:59cb2a9f3869187f62e4@cabot-swim
+DTSTAMP:20261124T000000Z
+DTSTART;TZID=America/New_York:20261124T114500
+DTEND;TZID=America/New_York:20261124T141500
+SUMMARY:Open Swim
+LOCATION:Barletta Natatorium\, Cabot Physical Education Center\, 400 Huntin
+ gton Ave\, Boston\, MA 02115
+TRANSP:TRANSPARENT
+END:VEVENT
 END:VCALENDAR
